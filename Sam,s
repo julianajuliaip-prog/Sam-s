@@ -1,0 +1,159 @@
+-- Sam's Desert Dominator
+-- Coloque no seu executor e execute.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- Ajuste o caminho se necessário (geralmente é ReplicatedStorage.Remotes)
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+
+-- Configurações
+local CONFIG = {
+    AutoSteal = true,
+    TPToBestCard = true,
+    AutoDigDesert = true,
+    AntiBoss = true,
+    SafeZoneCFrame = CFrame.new(0, 50, 0) -- Mude para a posição do seu spawn se precisar
+}
+
+-- ==========================================
+-- 1. AUTO STEAL (Roubo Automático)
+-- ==========================================
+task.spawn(function()
+    while CONFIG.AutoSteal do
+        task.wait(0.5)
+        -- Procura jogadores com cartas na base
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                -- Tenta roubar as cartas do inventário/base do alvo
+                -- O seu jogo mandou a variante C: FireServer(cardUid)
+                -- Vamos tentar varrer UIDs comuns (1 a 100) pra ver se o server aceita
+                for uid = 1, 50 do
+                    pcall(function()
+                        Remotes.StealCard:FireServer(uid)
+                    end)
+                end
+            end
+        end
+    end
+end)
+
+-- ==========================================
+-- 2. TP PARA A MELHOR CARTA ESPAUNADA
+-- ==========================================
+local function getBestCardInWorkspace()
+    local bestCard = nil
+    local highestRarity = -1
+
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        -- Ele procura por objetos que tenham "Card", "Carta" ou "Desert" no nome
+        if obj:IsA("Model") or obj:IsA("Part") then
+            if obj.Name:find("Card") or obj.Name:find("Carta") or obj.Name:find("Spawn") then
+                -- Tenta pegar a raridade via Attributes ou ValueObjects
+                local rarity = obj:GetAttribute("Rarity") or obj:GetAttribute("Value") or 1
+                if rarity > highestRarity then
+                    highestRarity = rarity
+                    bestCard = obj
+                end
+            end
+        end
+    end
+    return bestCard
+end
+
+task.spawn(function()
+    while CONFIG.TPToBestCard do
+        task.wait(0.1) -- Loop rápido para pegar as cartas antes dos outros
+        local bestCard = getBestCardInWorkspace()
+        
+        if bestCard and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local pos = bestCard.Position
+            local targetCFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+            
+            -- Teleporte Client-side (instantâneo)
+            LocalPlayer.Character:PivotTo(targetCFrame)
+            
+            -- Dispara o Remote de TP pra enganar o server (Área 6 conforme você citou)
+            pcall(function()
+                Remotes.Teleport:FireServer(6, targetCFrame)
+            end)
+        end
+    end
+end)
+
+-- ==========================================
+-- 3. AUTO DIG (Cavar no Deserto)
+-- ==========================================
+task.spawn(function()
+    while CONFIG.AutoDigDesert do
+        task.wait(0.1)
+        if LocalPlayer.Character then
+            -- Procura ferramentas de escavação no inventário
+            local shovel = LocalPlayer.Character:FindFirstChild("Shovel") or LocalPlayer.Backpack:FindFirstChild("Shovel")
+            if shovel then
+                pcall(function()
+                    shovel:Activate() -- Simula o clique de cavar
+                end)
+            end
+            
+            -- Fallback: caso o evento de cavar não use ferramenta, tenta o GrabPack
+            -- Descomente se precisar testar interações:
+            -- Remotes.GrabPack:FireServer(6, "DesertDig")
+        end
+    end
+end)
+
+-- ==========================================
+-- 4. ANTI-BOSS / ANTI-HIT
+-- ==========================================
+task.spawn(function()
+    while CONFIG.AntiBoss do
+        task.wait(0.2)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                -- Detecta o Boss (A Múmia, por exemplo) por nome
+                if obj.Name:find("Boss") or obj.Name:find("Mummy") or obj.Name:find("Enemy") then
+                    if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
+                        local dist = (obj.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+                        
+                        -- Se o boss chegar perto de 40 studs, a gente vaza
+                        if dist < 40 then
+                            -- Pula pro céu e tenta voltar pro spawn
+                            LocalPlayer.Character:PivotTo(CONFIG.SafeZoneCFrame)
+                            
+                            -- Usa o remote pra garantir que a hitbox do boss não pegue
+                            pcall(function()
+                                Remotes.Teleport:FireServer(1, CONFIG.SafeZoneCFrame)
+                            end)
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ==========================================
+-- BYPASS DO OPEN PACK (Race Condition)
+-- ==========================================
+-- Você mencionou que 2x rápido buga o dupe. Esse loop tenta explorar isso.
+task.spawn(function()
+    while true do
+        task.wait(1)
+        -- Ele procura pacotes soltos e tenta abrir rápido
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj.Name:find("Pack") or obj.Name:find("Pacote") then
+                pcall(function()
+                    Remotes.OpenPack:FireServer(obj:GetAttribute("Uid") or obj.Name)
+                end)
+            end
+        end
+    end
+end)
+
+print("Sam's Desert Dominator carregado com sucesso.")
